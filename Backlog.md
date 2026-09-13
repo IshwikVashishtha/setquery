@@ -61,11 +61,14 @@ start a later phase's tasks early (see `Agent.md` §1).
       `CallToolRequest`s for `compute_ndvi`/`compute_ndwi`)
 
 ## Phase 4 — Orchestration
-- [ ] Add `langgraph`/`langchain-core` to `requirements.txt`
-- [ ] Replace the hardcoded single path with a graph: router node -> single-image /
+- [x] Add `langgraph`/`langchain-core` to `requirements.txt`
+- [x] Replace the hardcoded single path with a graph: router node -> single-image /
       bi-temporal / optical-SAR node
-- [ ] **Manual test:** a single-image query still returns the same answer as
+      (`backend/orchestration.py`; bi-temporal & optical-SAR branches return
+      explicit 501 messages until Phases 5+ implement them)
+- [x] **Manual test:** a single-image query still returns the same answer as
       before — the graph must not regress existing behavior.
+      ✅ (JPEG + GeoTIFF answers unchanged; MCP subprocess still spawned via the graph)
 
 ## Phase 5 — Multi-temporal / change detection
 - [ ] Accept two co-registered images + dates

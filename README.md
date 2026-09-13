@@ -13,8 +13,11 @@ implemented:
   subprocess), and the **measured values** are fed to the model so its answer can
   be checked against real numbers instead of guesses.
 
-LangGraph orchestration and map overlays are deliberately deferred — see
-`plan.md` and `Design.md` for the roadmap.
+Requests are dispatched through a small LangGraph state machine
+(`backend/orchestration.py`) that routes on request shape — single-image,
+bi-temporal, and optical-SAR branches exist, with the latter two returning
+explicit "not implemented" responses until Phases 5+ land. Map overlays remain
+deferred — see `plan.md` and `Design.md` for the roadmap.
 
 ## How to run
 
@@ -70,8 +73,9 @@ passes in CI.
 
 ```
 backend/
-  app.py          # FastAPI app: POST /api/vqa, GET /health
+  app.py          # FastAPI app: POST /api/vqa, GET /health (thin web layer)
   schemas.py      # Pydantic v2 request/response models
+  orchestration.py# LangGraph state machine: router -> single/bi-temporal/SAR nodes (Phase 4)
   vqa_service.py  # answer_question / answer_index_question — the ONLY model-facing code
   geo_tools.py    # compute_ndvi / compute_ndwi band math (Phase 2)
   mcp_client.py   # spawns the MCP server subprocess, calls index tools (Phase 3)
