@@ -61,3 +61,46 @@ async def vqa(image: UploadFile = File(...), question: str = Form(...)) -> VQARe
         raise HTTPException(status_code=501, detail=result["error"])
 
     return VQAResponse(answer=result["answer"])
+
+
+@app.post("/api/change", response_model=VQAResponse)
+async def change(
+    image1: UploadFile = File(...),
+    image2: UploadFile = File(...),
+    question: str = Form(...),
+    date1: str | None = Form(None),
+    date2: str | None = Form(None),
+) -> VQAResponse:
+    """Describe the change between two co-registered images (Phase 5).
+
+    Dispatches through the graph's bi_temporal branch: both images plus optional
+    capture dates are sent to the VLM in a single message.
+
+    Raises:
+        HTTPException 400: if ``question`` is blank or either image is missing.
+        HTTPException 502: if the upstream model call fails.
+    """
+    question = question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="question must not be empty.")
+
+    data_before = await image1.read()
+    data_after = await image2.read()
+    if not data_before or not data_after:
+        raise HTTPException(status_code=400, detail="both images are required.")
+
+    result = await GRAPH.ainvoke(
+        {
+            "image_bytes": data_before,
+            "image2_bytes": data_after,
+            "question": question,
+            "n_images": 2,
+            "date_before": date1 or None,
+            "date_after": date2 or None,
+        }
+    )
+
+    if result.get("error"):
+        raise HTTPException(status_code=501, detail=result["error"])
+
+    return VQAResponse(answer=result["answer"])

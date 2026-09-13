@@ -69,17 +69,35 @@ def test_graph_single_image_returns_answer(monkeypatch):
     assert not result.get("error")
 
 
-def test_graph_bi_temporal_reports_not_implemented(monkeypatch):
-    """Two-image requests reach the explicit 501 branch, not a silent path."""
-    monkeypatch.setattr(
-        vqa_service, "_completion",
-        lambda messages: _FakeCompletion(),
-    )
+def test_graph_bi_temporal_returns_answer(monkeypatch):
+    """Phase 5: two-image requests reach the real bi-temporal branch."""
+    captured = {}
+
+    def capture_completion(messages):
+        captured["messages"] = messages
+        return _FakeCompletion()
+
+    monkeypatch.setattr(vqa_service, "_completion", capture_completion)
     result = asyncio.run(
-        GRAPH.ainvoke({"n_images": 2, "question": "What changed?"})
+        GRAPH.ainvoke(
+            {
+                "image_bytes": _jpg_bytes(),
+                "image2_bytes": _jpg_bytes(),
+                "question": "What changed?",
+                "n_images": 2,
+                "date_before": "2025-01-01",
+                "date_after": "2025-06-01",
+            }
+        )
     )
-    assert result.get("error") == _NOT_IMPLEMENTED["bi_temporal"]
-    assert not result.get("answer")
+    assert result.get("answer")
+    assert not result.get("error")
+    content = captured["messages"][0]["content"]
+    image_parts = [c for c in content if c["type"] == "image_url"]
+    text_parts = [c for c in content if c["type"] == "text"]
+    assert len(image_parts) == 2  # both images reach the model
+    assert "2025-01-01" in text_parts[0]["text"]
+    assert "2025-06-01" in text_parts[0]["text"]
 
 
 def test_graph_sar_reports_not_implemented():

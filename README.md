@@ -4,14 +4,16 @@ Upload satellite or aerial imagery, ask a question in plain English, and get a
 text answer. Powered by a hosted vision-language model (VLM) served through
 Hugging Face Inference Providers.
 
-Phase 1 (single-image VQA) and Phase 2 (GeoTIFF NDVI/NDWI cross-check) are
-implemented:
+Phases 1–5 are implemented:
 
 - **JPEG/PNG** — the image is sent to the VLM and answered directly.
 - **GeoTIFF** (`.tif`/`.tiff`) — NDVI and NDWI are computed from the actual
   bands via the **Earth-Agent MCP server** (a `python -m earth_agent.mcp_server`
   subprocess), and the **measured values** are fed to the model so its answer can
   be checked against real numbers instead of guesses.
+- **Bi-temporal change** (`POST /api/change`) — two co-registered images plus
+  optional capture dates are sent to the VLM together and the change between
+  them is described.
 
 Requests are dispatched through a small LangGraph state machine
 (`backend/orchestration.py`) that routes on request shape — single-image,
@@ -54,6 +56,12 @@ curl -F image=@sample.jpg -F question="What is in this image?" \
 # GeoTIFF — NDVI/NDWI computed locally, measured values given to the model
 curl -F image=@sample_multispectral.tif -F question="Is the vegetation healthy?" \
   http://localhost:8000/api/vqa
+
+# Change detection — two co-registered images + optional dates
+curl -X POST http://localhost:8000/api/change \
+  -F image1=@change_before.jpg -F image2=@change_after.jpg \
+  -F date1="2025-03-01" -F date2="2025-09-01" \
+  -F question="What changed between these two aerial images?"
 ```
 
 *Note on GeoTIFFs:* the red/NIR/green bands are found from band

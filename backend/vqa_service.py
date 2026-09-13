@@ -112,3 +112,51 @@ def answer_index_question(question: str, indices: dict[str, float]) -> str:
         {"role": "user", "content": [{"type": "text", "text": prompt}]}
     ]
     return _extract_answer(_completion(messages))
+
+
+def answer_change_question(
+    image_before: Image.Image,
+    image_after: Image.Image,
+    question: str,
+    date_before: str | None = None,
+    date_after: str | None = None,
+) -> str:
+    """Describe changes between two co-registered images (Phase 5 ChangeVQA).
+
+    Both images and, if given, their capture dates are sent to the hosted VLM in
+    a single message so it can compare them directly. The model is set by
+    ``VQA_MODEL``; today that's a general VLM (Qwen3-VL) — swap it for a
+    purpose-built ChangeVQA model without touching this function.
+
+    Args:
+        image_before: The earlier capture.
+        image_after: The later capture.
+        question: A plain-English change-detection question.
+        date_before, date_after: Optional capture dates for temporal context.
+
+    Returns:
+        The model's raw text answer.
+
+    Raises:
+        VQAServiceError: If the upstream model call fails or returns no text.
+    """
+    temporal = ""
+    if date_before and date_after:
+        temporal = f" Captured on {date_before} (before) and {date_after} (after)."
+    prompt = (
+        "Two images of the same region are provided at different times."
+        f"{temporal}"
+        " Compare them and describe what changed between the two; "
+        f"then answer the user's question.\n\nQuestion: {question}"
+    )
+    messages: list[dict[str, Any]] = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": _image_to_data_uri(image_before)}},
+                {"type": "image_url", "image_url": {"url": _image_to_data_uri(image_after)}},
+            ],
+        }
+    ]
+    return _extract_answer(_completion(messages))
