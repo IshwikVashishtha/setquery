@@ -1,15 +1,25 @@
 """FastAPI gateway: thin web layer over the orchestration graph (Phase 4).
 
-Validates the request, hands it to the LangGraph state machine, and maps the
-graph's result/error back to HTTP. All answering logic lives in
-``backend/orchestration.py``; this module has no model or geospatial code.
+Validates the request, hands it to the LangGraph state machine (or, for the
+Phase 6 grounding route, to the grounding pipeline), and maps errors back to
+HTTP. All answering logic lives in ``backend/orchestration.py`` and
+``backend/grounding.py``; this module has no model or geospatial code.
 """
+
+import base64
+import io
+import tempfile
+from typing import Annotated
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from PIL import Image, UnidentifiedImageError
 
+from . import grounding
+from .grounding import GroundingError
 from .orchestration import GRAPH
-from .schemas import VQAResponse
+from .schemas import GroundResponse, VQAResponse
+from .vqa_service import VQAServiceError
 
 load_dotenv()  # dev: load HF_TOKEN / VQA_MODEL from .env
 
@@ -104,3 +114,53 @@ async def change(
         raise HTTPException(status_code=501, detail=result["error"])
 
     return VQAResponse(answer=result["answer"])
+
+
+@app.post("/api/ground", response_model=GroundResponse)
+async def ground(
+    image: UploadFile = File(...),
+    query: str = Form(...),
+) -> GroundResponse:
+    """Ground every instance of ``query`` in ``image`` and return boxes + overlay.
+
+    Phase 6 (Backlog.md): the hosted VLM localizes the requested object and
+    returns JSON boxes; for GeoTIFF uploads the pixel boxes are mapped to
+    real-world coordinates and a self-contained Folium/Leaflet map embeds the
+    image + red box rectangles at their correct locations.
+
+    Raises:
+        HTTPException 400: empty ``query``, unreadable image, or no boxes found.
+        HTTPException 502: if the upstream model call fails.
+    """
+    query = query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query must not be empty.")
+
+    data = await image.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="image file was empty.")
+
+    ext = (image.filename or "").rsplit(".", 1)[-1].lower()
+    is_geotiff = ext in GEOTIFF_EXTENSIONS
+
+    # GeoTIFF needs to be on disk for rasterio reads/geo-mapping later.
+    tmp_path = None
+    try:
+        if is_geotiff:
+            with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
+                tmp.write(data)
+                tmp_path = tmp.name
+
+        try:
+            result = grounding.ground_image(data, query, is_geotiff, tmp_path)
+        except GroundingError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except VQAServiceError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    finally:
+        if tmp_path:
+            import os
+
+            os.unlink(tmp_path)
+
+    return GroundResponse(**result)

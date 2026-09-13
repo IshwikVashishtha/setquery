@@ -114,6 +114,51 @@ def answer_index_question(question: str, indices: dict[str, float]) -> str:
     return _extract_answer(_completion(messages))
 
 
+_GROUNDING_PROMPT = """\
+You are an object-detection assistant. Return ONLY a JSON array of the objects
+matching the user's request that are visible in the image. Each element is an
+object with exactly these keys:
+  {{"label": "<object name>", "confidence": <0-1>, "xmin": <int>, "ymin": <int>, "xmax": <int>, "ymax": <int>}}
+Rules:
+- All coordinates are integers in [0, 1000] in normalized image space (0 = left/top edge, 1000 = right/bottom edge); xmin < xmax and ymin < ymax.
+- One element per matching object; include every distinct instance.
+- If nothing matches the request, return [].
+- Do not output a single word outside the JSON array.
+
+Requested object: {query}"""
+
+
+def ground_objects(image: Image.Image, query: str) -> str:
+    """Ask the hosted VLM to localize every instance of ``query`` in ``image``.
+
+    Phase 6 grounding path (Backlog.md): the model returns a JSON array of
+    bounding boxes for the requested object as **raw text** — parsing and
+    rescaling are done in ``backend/grounding.py``, keeping the model-facing
+    boundary isolated here (Agent.md §2). Coordinates come back in 0-1000
+    normalized space.
+
+    Args:
+        image: The uploaded image (any mode/format; converted to RGB JPEG).
+        query: The object class to localize, e.g. "buildings".
+
+    Returns:
+        The model's raw text answer (near-JSON array of boxes).
+
+    Raises:
+        VQAServiceError: If the upstream model call fails or returns no text.
+    """
+    messages: list[dict[str, Any]] = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": _GROUNDING_PROMPT.format(query=query)},
+                {"type": "image_url", "image_url": {"url": _image_to_data_uri(image)}},
+            ],
+        }
+    ]
+    return _extract_answer(_completion(messages))
+
+
 def answer_change_question(
     image_before: Image.Image,
     image_after: Image.Image,

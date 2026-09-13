@@ -4,7 +4,7 @@ Upload satellite or aerial imagery, ask a question in plain English, and get a
 text answer. Powered by a hosted vision-language model (VLM) served through
 Hugging Face Inference Providers.
 
-Phases 1–5 are implemented:
+Phases 1–6 are implemented:
 
 - **JPEG/PNG** — the image is sent to the VLM and answered directly.
 - **GeoTIFF** (`.tif`/`.tiff`) — NDVI and NDWI are computed from the actual
@@ -14,6 +14,10 @@ Phases 1–5 are implemented:
 - **Bi-temporal change** (`POST /api/change`) — two co-registered images plus
   optional capture dates are sent to the VLM together and the change between
   them is described.
+- **Grounding & map overlay** (`POST /api/ground`) — the VLM localizes every
+  instance of a requested object and returns bounding boxes; for GeoTIFF uploads
+  the boxes are mapped to real-world coordinates and rendered on an interactive
+  **Folium/Leaflet** map with the image overlaid at the correct geo footprint.
 
 Requests are dispatched through a small LangGraph state machine
 (`backend/orchestration.py`) that routes on request shape — single-image,
@@ -62,6 +66,14 @@ curl -X POST http://localhost:8000/api/change \
   -F image1=@change_before.jpg -F image2=@change_after.jpg \
   -F date1="2025-03-01" -F date2="2025-09-01" \
   -F question="What changed between these two aerial images?"
+
+# Grounding — find objects and get pixel boxes (JPG)
+curl -F image=@sample.jpg -F query="buildings" \
+  http://localhost:8000/api/ground
+
+# Grounding — GeoTIFF: boxes + Leaflet map with image + rectangles at real geo coords
+curl -F image=@sample_multispectral.tif -F query="colored region" \
+  http://localhost:8000/api/ground
 ```
 
 *Note on GeoTIFFs:* the red/NIR/green bands are found from band
@@ -81,12 +93,13 @@ passes in CI.
 
 ```
 backend/
-  app.py          # FastAPI app: POST /api/vqa, GET /health (thin web layer)
-  schemas.py      # Pydantic v2 request/response models
+  app.py          # FastAPI app: POST /api/vqa, /api/change, /api/ground (thin web layer)
+  schemas.py      # Pydantic v2 request/response models (VQAResponse, GroundResponse)
   orchestration.py# LangGraph state machine: router -> single/bi-temporal/SAR nodes (Phase 4)
-  vqa_service.py  # answer_question / answer_index_question — the ONLY model-facing code
+  vqa_service.py  # answer_question / answer_change_question / ground_objects — the ONLY model-facing code
   geo_tools.py    # compute_ndvi / compute_ndwi band math (Phase 2)
   mcp_client.py   # spawns the MCP server subprocess, calls index tools (Phase 3)
+  grounding.py    # Phase 6: tolerant box parser, geo-mapping, Folium overlay builder
 earth_agent/
   mcp_server.py   # Earth-Agent MCP server exposing geo tools over stdio (Phase 3)
 frontend/
@@ -95,6 +108,7 @@ tests/
   test_vqa_smoke.py
   test_geo_tools.py
   test_mcp.py
+  test_grounding.py
 .env.example      # HF_TOKEN=, VQA_MODEL=
 requirements.txt
 ```
