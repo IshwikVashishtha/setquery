@@ -1,0 +1,17 @@
+# Secrets — never commit real tokens
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+
+# OS
+.DS_Store
+Thumbs.db
