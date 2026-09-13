@@ -13,25 +13,26 @@ start a later phase's tasks early (see `Agent.md` §1).
 - **Manual test:** `pip install -r requirements.txt` succeeds in a clean venv. ✅
 
 ## Phase 1 — Single-Image VQA (MVP — current priority)
-- [ ] `backend/schemas.py`: `VQAResponse(BaseModel)` with `answer: str`
-- [ ] `backend/vqa_service.py`: implement `answer_question(image: PIL.Image, question: str) -> str`
+- [x] `backend/schemas.py`: `VQAResponse(BaseModel)` with `answer: str`
+- [x] `backend/vqa_service.py`: implement `answer_question(image: PIL.Image, question: str) -> str`
       using `Design.md` §5 Option A. Raise a clear exception on API failure.
-- [ ] `backend/app.py`: FastAPI app with
+- [x] `backend/app.py`: FastAPI app with
   - `GET /health` -> `{"status": "ok"}`
   - `POST /api/vqa` (multipart: `image` file + `question` str) -> `VQAResponse`
   - 400 on missing/invalid image, 502 on model-call failure
-- [ ] **Manual test:** run `uvicorn backend.app:app --reload`, then
+- [x] **Manual test:** run `uvicorn backend.app:app --reload`, then
       `curl -F image=@sample.jpg -F question="What is in this image?" http://localhost:8000/api/vqa`
-      returns a coherent JSON answer.
-- [ ] `frontend/app.py`: Gradio `Interface` — image upload + question textbox ->
+      returns a coherent JSON answer. ✅ (live on :8000)
+- [x] `frontend/app.py`: Gradio `Interface` — image upload + question textbox ->
       calls the backend endpoint via `httpx`, displays the answer
-- [ ] **Manual test:** run `python frontend/app.py`, upload a real photo, ask a
+- [x] **Manual test:** run `python frontend/app.py`, upload a real photo, ask a
       question, get a sensible answer in the browser within ~10 seconds.
-- [ ] `tests/test_vqa_smoke.py`: pytest that calls `answer_question()` directly
+      ✅ (Gradio serving on :7860; `ask_vqa` path verified live, ~4.4 s)
+- [x] `tests/test_vqa_smoke.py`: pytest that calls `answer_question()` directly
       with a sample image and asserts a non-empty string is returned (mock the API
-      call if running in CI without an `HF_TOKEN`)
-- [ ] Fill in `README.md` run instructions
-- [ ] Tick "Phase 1" in `plan.md`'s status table
+      call if running in CI without an `HF_TOKEN`) — 8 passed incl. a live call
+- [x] Fill in `README.md` run instructions
+- [x] Tick "Phase 1" in `plan.md`'s status table
 
 ## Phase 2 — Geospatial basics (don't start before Phase 1 is ticked off)
 - [ ] Add `rasterio` to `requirements.txt`

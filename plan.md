@@ -62,7 +62,7 @@ A phase is done when:
 
 ## Status
 - [x] Phase 0 — Scaffolding
-- [ ] Phase 1 — Single-Image VQA MVP **(current priority)**
+- [x] Phase 1 — Single-Image VQA MVP **(current priority)**
 - [ ] Phase 2 — Geospatial basics (NDVI/NDWI)
 - [ ] Phase 3 — MCP tool server
 - [ ] Phase 4 — LangGraph orchestration
