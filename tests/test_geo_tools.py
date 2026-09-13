@@ -8,9 +8,9 @@ import rasterio as rio
 from fastapi.testclient import TestClient
 from rasterio.transform import from_origin
 
-from backend import vqa_service
+from backend import mcp_client, vqa_service
 from backend.app import app
-from backend.geo_tools import BandResolutionError, compute_ndvi, compute_ndwi
+from backend.geo_tools import BandResolutionError, GeoError, compute_ndvi, compute_ndwi
 
 
 def _write_geotiff(path: str, *, descriptions: list[str] | None = None) -> str:
@@ -102,7 +102,11 @@ def test_vqa_geotiff_returns_answer(client, monkeypatch, tmp_path):
         captured["messages"] = messages
         return _FakeCompletion()
 
+    async def fake_compute_indices(path, bbox=None):
+        return {"NDVI": 0.3888888888888889, "NDWI": -0.2335}
+
     monkeypatch.setattr(vqa_service, "_completion", capture_completion)
+    monkeypatch.setattr(mcp_client, "compute_indices", fake_compute_indices)
 
     path = _write_geotiff(str(tmp_path / "upload.tif"),
                           descriptions=["Red", "Green", "Blue", "NIR"])
@@ -117,11 +121,16 @@ def test_vqa_geotiff_returns_answer(client, monkeypatch, tmp_path):
 
     prompt_text = captured["messages"][0]["content"][0]["text"]
     assert "NDVI" in prompt_text
-    assert "0.400" in prompt_text  # the measured mean, formatted to 3 decimals
+    assert "0.389" in prompt_text  # the measured mean, formatted to 3 decimals
 
 
 def test_vqa_geotiff_undecodable_bands_returns_400(client, monkeypatch, tmp_path):
     """A GeoTIFF with unresolvable bands -> 400, not a model call."""
+    async def no_indices(path, bbox=None):
+        return {}
+
+    monkeypatch.setattr(mcp_client, "compute_indices", no_indices)
+
     path = _write_bare_geotiff(str(tmp_path / "upload.tif"))
     with open(path, "rb") as fh:
         response = client.post(
@@ -130,6 +139,24 @@ def test_vqa_geotiff_undecodable_bands_returns_400(client, monkeypatch, tmp_path
             data={"question": "Is the vegetation healthy?"},
         )
     assert response.status_code == 400
+
+
+def test_vqa_geotiff_geo_error_returns_400(client, monkeypatch, tmp_path):
+    """A GeoError from the MCP client (e.g. corrupt raster) -> 400."""
+    async def broken(path, bbox=None):
+        raise GeoError("MCP tool compute_ndvi failed: not recognized as a GeoTIFF")
+
+    monkeypatch.setattr(mcp_client, "compute_indices", broken)
+
+    path = _write_bare_geotiff(str(tmp_path / "upload.tif"))
+    with open(path, "rb") as fh:
+        response = client.post(
+            "/api/vqa",
+            files={"image": ("upload.tif", fh, "application/octet-stream")},
+            data={"question": "Is the vegetation healthy?"},
+        )
+    assert response.status_code == 400
+    assert "failed" in response.json()["detail"]
 
 
 class _FakeMessage:

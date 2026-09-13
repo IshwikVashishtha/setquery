@@ -64,8 +64,8 @@ A phase is done when:
 - [x] Phase 0 — Scaffolding
 - [x] Phase 1 — Single-Image VQA MVP
 - [x] Phase 2 — Geospatial basics (NDVI/NDWI)
-- [ ] Phase 3 — MCP tool server **(current priority)**
-- [ ] Phase 4 — LangGraph orchestration
+- [x] Phase 3 — MCP tool server
+- [ ] Phase 4 — LangGraph orchestration **(current priority)**
 - [ ] Phase 5 — Multi-temporal change detection
 - [ ] Phase 6 — Segmentation & map overlay
 - [ ] Phase 7 — Hardening

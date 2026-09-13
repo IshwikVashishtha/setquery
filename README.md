@@ -8,11 +8,12 @@ Phase 1 (single-image VQA) and Phase 2 (GeoTIFF NDVI/NDWI cross-check) are
 implemented:
 
 - **JPEG/PNG** — the image is sent to the VLM and answered directly.
-- **GeoTIFF** (`.tif`/`.tiff`) — NDVI and NDWI are computed locally from the
-  actual bands, and the **measured values** are fed to the model so its answer
-  can be checked against real numbers instead of guesses.
+- **GeoTIFF** (`.tif`/`.tiff`) — NDVI and NDWI are computed from the actual
+  bands via the **Earth-Agent MCP server** (a `python -m earth_agent.mcp_server`
+  subprocess), and the **measured values** are fed to the model so its answer can
+  be checked against real numbers instead of guesses.
 
-MCP tools, orchestration graphs, and map overlays are deliberately deferred — see
+LangGraph orchestration and map overlays are deliberately deferred — see
 `plan.md` and `Design.md` for the roadmap.
 
 ## How to run
@@ -72,12 +73,16 @@ backend/
   app.py          # FastAPI app: POST /api/vqa, GET /health
   schemas.py      # Pydantic v2 request/response models
   vqa_service.py  # answer_question / answer_index_question — the ONLY model-facing code
-  geo_tools.py    # compute_ndvi / compute_ndwi on GeoTIFFs (Phase 2)
+  geo_tools.py    # compute_ndvi / compute_ndwi band math (Phase 2)
+  mcp_client.py   # spawns the MCP server subprocess, calls index tools (Phase 3)
+earth_agent/
+  mcp_server.py   # Earth-Agent MCP server exposing geo tools over stdio (Phase 3)
 frontend/
   app.py          # Gradio UI
 tests/
   test_vqa_smoke.py
   test_geo_tools.py
+  test_mcp.py
 .env.example      # HF_TOKEN=, VQA_MODEL=
 requirements.txt
 ```

@@ -5,6 +5,7 @@ python-multipart>=0.0.20,<1.0
 python-dotenv>=1.0,<2.0
 numpy>=2.0,<3.0
 rasterio>=1.4,<2.0
+mcp>=1.0,<2.0
 openai>=1.59,<2.0
 gradio>=5.0,<6.0
 pillow>=11.0,<12.0

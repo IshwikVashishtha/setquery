@@ -49,14 +49,16 @@ start a later phase's tasks early (see `Agent.md` §1).
       hallucinated one. ✅ (live: answer cited measured NDVI 0.389 / NDWI -0.234)
 
 ## Phase 3 — MCP-ify the tools
-- [ ] Add `mcp` to `requirements.txt`
-- [ ] Move `geo_tools.py` functions into `earth_agent/mcp_server.py`, exposed as
+- [x] Add `mcp` to `requirements.txt`
+- [x] Move `geo_tools.py` functions into `earth_agent/mcp_server.py`, exposed as
       MCP tools
-- [ ] `backend/mcp_client.py`: spawn the subprocess via `stdio_client` (pattern
+- [x] `backend/mcp_client.py`: spawn the subprocess via `stdio_client` (pattern
       from the source doc's §5.1 / §4), call tools, close cleanly
-- [ ] Add context-aware tool truncation only once tool count > ~10
-- [ ] **Manual test:** same NDVI query as Phase 2, now routed through the MCP
-      subprocess instead of a direct function call.
+- [x] Add context-aware tool truncation only once tool count > ~10 — deferred
+      (current surface is 2 tools; verified < 10 in `test_mcp.py`)
+- [x] **Manual test:** same NDVI query as Phase 2, now routed through the MCP
+      subprocess instead of a direct function call. ✅ (server log showed 2
+      `CallToolRequest`s for `compute_ndvi`/`compute_ndwi`)
 
 ## Phase 4 — Orchestration
 - [ ] Add `langgraph`/`langchain-core` to `requirements.txt`

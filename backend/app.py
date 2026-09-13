@@ -13,7 +13,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 
-from .geo_tools import BandResolutionError, GeoError, compute_ndvi, compute_ndwi
+from .geo_tools import GeoError
+from . import mcp_client
 from .schemas import VQAResponse
 from .vqa_service import VQAServiceError, answer_index_question, answer_question
 
@@ -33,8 +34,11 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
-def _answer_geotiff(data: bytes, question: str) -> str:
-    """Compute NDVI/NDWI from an uploaded GeoTIFF and answer from measured values.
+async def _answer_geotiff(data: bytes, question: str) -> str:
+    """Compute NDVI/NDWI via the MCP subprocess and answer from measured values.
+
+    Phase 3: index computation is routed through ``earth_agent.mcp_server``
+    instead of calling ``geo_tools`` directly (Backlog Phase 3 manual test).
 
     Raises:
         HTTPException 400: if the raster can't be read or no index bands resolve.
@@ -46,12 +50,10 @@ def _answer_geotiff(data: bytes, question: str) -> str:
             tmp.write(data)
             tmp_path = tmp.name
 
-        indices: dict[str, float] = {}
-        for name, compute in (("NDVI", compute_ndvi), ("NDWI", compute_ndwi)):
-            try:
-                indices[name] = compute(tmp_path)
-            except BandResolutionError:
-                continue  # band not present — try the next index
+        try:
+            indices = await mcp_client.compute_indices(tmp_path)
+        except GeoError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         if not indices:
             raise HTTPException(
@@ -60,8 +62,6 @@ def _answer_geotiff(data: bytes, question: str) -> str:
                        "computations. Add band descriptions (e.g. 'Red', 'NIR') or "
                        "pass explicit band indices.",
             )
-    except GeoError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         if tmp_path:
             os.unlink(tmp_path)
@@ -96,7 +96,7 @@ async def vqa(image: UploadFile = File(...), question: str = Form(...)) -> VQARe
 
     ext = (image.filename or "").rsplit(".", 1)[-1].lower()
     if ext in GEOTIFF_EXTENSIONS:
-        return VQAResponse(answer=_answer_geotiff(data, question))
+        return VQAResponse(answer=await _answer_geotiff(data, question))
 
     try:
         pil_image = Image.open(BytesIO(data))
