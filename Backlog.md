@@ -35,16 +35,18 @@ start a later phase's tasks early (see `Agent.md` §1).
 - [x] Tick "Phase 1" in `plan.md`'s status table
 
 ## Phase 2 — Geospatial basics (don't start before Phase 1 is ticked off)
-- [ ] Add `rasterio` to `requirements.txt`
-- [ ] `backend/geo_tools.py`: `compute_ndvi(path: str, bbox: list[float]) -> float`,
+- [x] Add `rasterio` to `requirements.txt`
+- [x] `backend/geo_tools.py`: `compute_ndvi(path: str, bbox: list[float]) -> float`,
       `compute_ndwi(...)` — real GeoTIFF band math, not a placeholder
-- [ ] Extend `/api/vqa` to accept `.tif`/`.tiff` uploads, compute the relevant
+      (band resolution via descriptions or explicit indices; NDVI & McFeeters NDWI
+      with nodata masking + windowed bbox reads)
+- [x] Extend `/api/vqa` to accept `.tif`/`.tiff` uploads, compute the relevant
       index, and include the number in the prompt sent to the model (the
       "cross-check" idea from the source docs — validate the model's textual claim
       against the real number)
-- [ ] **Manual test:** upload a sample multispectral GeoTIFF, ask "is this
+- [x] **Manual test:** upload a sample multispectral GeoTIFF, ask "is this
       vegetation healthy?", confirm the answer references a real NDVI value, not a
-      hallucinated one.
+      hallucinated one. ✅ (live: answer cited measured NDVI 0.389 / NDWI -0.234)
 
 ## Phase 3 — MCP-ify the tools
 - [ ] Add `mcp` to `requirements.txt`

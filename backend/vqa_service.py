@@ -50,6 +50,14 @@ def _completion(messages: list[dict[str, Any]]) -> Any:
         raise VQAServiceError(f"Model call failed: {exc}") from exc
 
 
+def _extract_answer(completion: Any) -> str:
+    """Pull the text answer out of a completion, or raise a clear error."""
+    content = completion.choices[0].message.content
+    if not content:
+        raise VQAServiceError("Model returned an empty answer.")
+    return content
+
+
 def answer_question(image: Image.Image, question: str) -> str:
     """Ask the hosted VLM what is in ``image`` and return the text answer.
 
@@ -72,8 +80,35 @@ def answer_question(image: Image.Image, question: str) -> str:
             ],
         }
     ]
-    completion = _completion(messages)
-    content = completion.choices[0].message.content
-    if not content:
-        raise VQAServiceError("Model returned an empty answer.")
-    return content
+    return _extract_answer(_completion(messages))
+
+
+def answer_index_question(question: str, indices: dict[str, float]) -> str:
+    """Answer a question about a GeoTIFF from computed multispectral indices.
+
+    The GeoTIFF itself isn't sent to the model (it's not a viewable image) —
+    instead the *measured* index values are placed in the prompt so the model
+    reasons from real numbers instead of guessing (the Phase 2 cross-check).
+
+    Args:
+        question: A plain-English question about the raster, e.g. about
+            vegetation or water health.
+        indices: Measured values, e.g. ``{"NDVI": 0.42, "NDWI": -0.31}``.
+
+    Returns:
+        The model's raw text answer.
+
+    Raises:
+        VQAServiceError: If the upstream model call fails or returns no text.
+    """
+    measurements = ", ".join(f"{name}: {value:.3f}" for name, value in indices.items())
+    prompt = (
+        "The user uploaded a multispectral GeoTIFF. The following index values "
+        f"were computed from its bands (means over valid pixels): {measurements}. "
+        f"Answer the user's question using these measured values where relevant.\n\n"
+        f"Question: {question}"
+    )
+    messages: list[dict[str, Any]] = [
+        {"role": "user", "content": [{"type": "text", "text": prompt}]}
+    ]
+    return _extract_answer(_completion(messages))
