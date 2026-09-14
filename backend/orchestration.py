@@ -23,8 +23,9 @@ from fastapi import HTTPException
 from langgraph.graph import END, START, StateGraph
 from PIL import Image, UnidentifiedImageError
 
-from . import mcp_client
+from . import grounding, mcp_client
 from .geo_tools import GeoError
+from .grounding import GroundingError
 from .vqa_service import (
     VQAServiceError,
     answer_change_question,
@@ -94,7 +95,12 @@ def _answer_raster_image(data: bytes, question: str) -> str:
 
 
 async def _answer_geotiff(data: bytes, question: str) -> str:
-    """Phase 3 logic: compute NDVI/NDWI via the MCP subprocess (unchanged)."""
+    """Phase 3 logic: compute NDVI/NDWI via the MCP subprocess.
+
+    When the raster lacks the bands needed for index computation (e.g. an
+    RGB-only GeoTIFF with no NIR), the RGB preview is sent directly to the
+    VLM — the same path as JPEG/PNG uploads.
+    """
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
@@ -107,12 +113,24 @@ async def _answer_geotiff(data: bytes, question: str) -> str:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         if not indices:
-            raise HTTPException(
-                status_code=400,
-                detail="This GeoTIFF's bands could not be identified for NDVI/NDWI "
-                       "computations. Add band descriptions (e.g. 'Red', 'NIR') or "
-                       "pass explicit band indices.",
-            )
+            # RGB-only raster: no Red/NIR bands → indices can't be computed.
+            # Fall back to sending the RGB preview directly to the VLM.
+            logger.info("No indices computable for this GeoTIFF; falling back to direct VLM answering.")
+            try:
+                preview, _w, _h = grounding.render_rgb_preview(tmp_path)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail="This GeoTIFF's bands could not be identified for NDVI/NDWI "
+                           "computations and an RGB preview could not be rendered. "
+                           "Add band descriptions (e.g. 'Red', 'NIR') or pass explicit "
+                           "band indices.",
+                ) from exc
+            try:
+                return answer_question(preview, question)
+            except VQAServiceError as exc:
+                logger.error("VQA model call failed: %s", exc)
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
     finally:
         if tmp_path:
             os.unlink(tmp_path)

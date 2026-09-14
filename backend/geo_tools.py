@@ -31,6 +31,24 @@ _KIND_TO_TOKENS: dict[BandKind, tuple[str, ...]] = {
     "swir": ("swirband", "swir band", "swir"),
 }
 
+# ---------------------------------------------------------------------------
+# Band-count-based positional mapping (fallback when descriptions are missing)
+# ---------------------------------------------------------------------------
+
+# Each entry maps band count → {band_kind: 1-based_index}.
+# Only the bands needed for NDVI/NDWI (red, green, nir) are mapped; SWIR is
+# included where a standard format makes it unambiguous.
+_BAND_POSITION_MAP: dict[int, dict[BandKind, int]] = {
+    # 4-band drone / multispectral: R, G, B, NIR
+    4: {"red": 1, "green": 2, "nir": 4},
+    # Landsat 7 ETM+ (8 bands): B1-Blue, B2-Green, B3-Red, B4-NIR, B5-SWIR1, B6-TIR, B7-SWIR2, B8-Pan
+    8: {"green": 2, "red": 3, "nir": 4},
+    # Landsat 8/9 OLI (11 bands): B1-Coastal, B2-Blue, B3-Green, B4-Red, B5-NIR, B6-SWIR1, B7-SWIR2, B8-Pan, B9-Cirrus, B10-TIR1, B11-TIR2
+    11: {"green": 3, "red": 4, "nir": 5},
+    # Sentinel-2 (13 bands): B01-Coastal, B02-Blue, B03-Green, B04-Red, B05-B07-RE, B08-NIR, B08A-Narrow, B09-WV, B10-Cirrus, B11-SWIR1, B12-SWIR2
+    13: {"green": 3, "red": 4, "nir": 8},
+}
+
 
 class GeoError(RuntimeError):
     """Base error for geospatial index computation (maps to HTTP 4xx upstream)."""
@@ -67,9 +85,18 @@ def _resolve_bands(
 ) -> dict[BandKind, int]:
     """Map each needed band to a 1-based band index in the dataset.
 
+    Resolution order per band:
+      1. Explicit ``*_band`` argument, if given.
+      2. Band *descriptions* matched on keywords (``red``, ``nir``, …).
+      3. Positional map for known satellite formats keyed by band count
+         (Sentinel-2 = 13, Landsat 8/9 = 11, Landsat 7 = 8, drone RGBN = 4).
+
     ``explicit`` may carry pre-resolved indices (e.g. ``red=3, nir=4``).
     """
     resolved: dict[BandKind, int] = {}
+    unresolved: list[BandKind] = []
+
+    # --- pass 1: explicit indices + keyword matching ---
     for kind in needed:
         if kind in explicit and explicit[kind] is not None:
             band = int(explicit[kind])
@@ -78,18 +105,35 @@ def _resolve_bands(
             resolved[kind] = band
             continue
 
-        # No explicit index: try to match over 1..count by keyword first match.
         for band in range(1, src.count + 1):
             desc = _description(src, band)
             if any(tok in desc for tok in _KIND_TO_TOKENS[kind]):
                 resolved[kind] = band
                 break
         else:
-            raise BandResolutionError(
-                f"Could not identify the '{kind}' band in this GeoTIFF "
-                f"({src.count} bands, descriptions: {list(src.descriptions)}). "
-                f"Pass it explicitly, e.g. compute_ndvi(path, bbox, {kind}=<n>)."
-            )
+            unresolved.append(kind)
+
+    # --- pass 2: positional fallback for known satellite formats ---
+    if unresolved and src.count in _BAND_POSITION_MAP:
+        pos = _BAND_POSITION_MAP[src.count]
+        still_missing: list[BandKind] = []
+        for kind in unresolved:
+            if kind in pos:
+                band = pos[kind]
+                if 1 <= band <= src.count:
+                    resolved[kind] = band
+                else:
+                    still_missing.append(kind)
+            else:
+                still_missing.append(kind)
+        unresolved = still_missing
+
+    if unresolved:
+        raise BandResolutionError(
+            f"Could not identify the '{unresolved[0]}' band in this GeoTIFF "
+            f"({src.count} bands, descriptions: {list(src.descriptions)}). "
+            f"Pass it explicitly, e.g. compute_ndvi(path, bbox, {unresolved[0]}=<n>)."
+        )
     return resolved
 
 

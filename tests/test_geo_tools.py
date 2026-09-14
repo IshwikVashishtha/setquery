@@ -124,12 +124,22 @@ def test_vqa_geotiff_returns_answer(client, monkeypatch, tmp_path):
     assert "0.389" in prompt_text  # the measured mean, formatted to 3 decimals
 
 
-def test_vqa_geotiff_undecodable_bands_returns_400(client, monkeypatch, tmp_path):
-    """A GeoTIFF with unresolvable bands -> 400, not a model call."""
+def test_vqa_geotiff_undecodable_bands_falls_back_to_vlm(client, monkeypatch, tmp_path):
+    """A GeoTIFF with unresolvable bands falls back to direct VLM answering."""
+    class _FakeMessage:
+        content = "The image shows a coastal area with mixed land cover."
+
+    class _FakeChoice:
+        message = _FakeMessage()
+
+    class _FakeCompletion:
+        choices = [_FakeChoice()]
+
     async def no_indices(path, bbox=None):
         return {}
 
     monkeypatch.setattr(mcp_client, "compute_indices", no_indices)
+    monkeypatch.setattr(vqa_service, "_completion", lambda messages: _FakeCompletion())
 
     path = _write_bare_geotiff(str(tmp_path / "upload.tif"))
     with open(path, "rb") as fh:
@@ -138,7 +148,8 @@ def test_vqa_geotiff_undecodable_bands_returns_400(client, monkeypatch, tmp_path
             files={"image": ("upload.tif", fh, "application/octet-stream")},
             data={"question": "Is the vegetation healthy?"},
         )
-    assert response.status_code == 400
+    assert response.status_code == 200
+    assert len(response.json()["answer"]) > 0
 
 
 def test_vqa_geotiff_geo_error_returns_400(client, monkeypatch, tmp_path):
