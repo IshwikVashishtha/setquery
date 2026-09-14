@@ -1,0 +1,69 @@
+{
+  "mcpServers": {
+    "index": {
+      "type": "stdio",
+      "command": "D:/Ai - Engineer/setquery/.venv/Scripts/python.exe",
+      "args": [
+        "D:/Ai - Engineer/setquery/mcp_servers/agent_tools/Index.py",
+        "--temp_dir",
+        "D:/Ai - Engineer/setquery/mcp_servers/out"
+      ],
+      "env": {
+        "PYTHONPATH": "D:/Ai - Engineer/setquery/mcp_servers/agent_tools",
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    "analysis": {
+      "type": "stdio",
+      "command": "D:/Ai - Engineer/setquery/.venv/Scripts/python.exe",
+      "args": [
+        "D:/Ai - Engineer/setquery/mcp_servers/agent_tools/Analysis.py",
+        "--temp_dir",
+        "D:/Ai - Engineer/setquery/mcp_servers/out"
+      ],
+      "env": {
+        "PYTHONPATH": "D:/Ai - Engineer/setquery/mcp_servers/agent_tools",
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    "inversion": {
+      "type": "stdio",
+      "command": "D:/Ai - Engineer/setquery/.venv/Scripts/python.exe",
+      "args": [
+        "D:/Ai - Engineer/setquery/mcp_servers/agent_tools/Inversion.py",
+        "--temp_dir",
+        "D:/Ai - Engineer/setquery/mcp_servers/out"
+      ],
+      "env": {
+        "PYTHONPATH": "D:/Ai - Engineer/setquery/mcp_servers/agent_tools",
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    "perception": {
+      "type": "stdio",
+      "command": "D:/Ai - Engineer/setquery/.venv/Scripts/python.exe",
+      "args": [
+        "D:/Ai - Engineer/setquery/mcp_servers/agent_tools/Perception.py",
+        "--temp_dir",
+        "D:/Ai - Engineer/setquery/mcp_servers/out"
+      ],
+      "env": {
+        "PYTHONPATH": "D:/Ai - Engineer/setquery/mcp_servers/agent_tools",
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    "statistics": {
+      "type": "stdio",
+      "command": "D:/Ai - Engineer/setquery/.venv/Scripts/python.exe",
+      "args": [
+        "D:/Ai - Engineer/setquery/mcp_servers/agent_tools/Statistics.py",
+        "--temp_dir",
+        "D:/Ai - Engineer/setquery/mcp_servers/out"
+      ],
+      "env": {
+        "PYTHONPATH": "D:/Ai - Engineer/setquery/mcp_servers/agent_tools",
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}
