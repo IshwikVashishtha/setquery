@@ -14,22 +14,41 @@ Run with ``python frontend/app.py`` while ``uvicorn backend.app:app`` is up.
 import base64
 import io
 import os
+import sys
+from pathlib import Path
+
+# Allow running as ``python frontend/app.py`` from the repo root: make the
+# repo root importable so ``backend.grounding`` (band-stretched preview) is
+# reachable.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import gradio as gr
 import httpx
 from PIL import Image, ImageDraw, ImageFont
 
+from backend.grounding import render_rgb_preview
+
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 _BOX_COLOR = "#ff2020"
 
 
-def ask_vqa(image: Image.Image, question: str) -> str:
-    """Send ``image`` + ``question`` to the backend and return its answer."""
-    if image is None or not question.strip():
+def ask_vqa(image: Image.Image, geotiff_file, question: str) -> str:
+    """Send ``image`` (or GeoTIFF) + ``question`` to the backend.
+
+    ``geotiff_file`` (a raw .tif upload) takes priority: its bytes reach the
+    backend byte-identical so all bands reach the index computation. The image
+    box is then just the visual preview.
+    """
+    if geotiff_file is not None:
+        filename, file_bytes = _read_upload(geotiff_file)
+        ext = filename.rsplit(".", 1)[-1].lower()
+        files = {"image": (f"upload.{ext}", file_bytes, "application/octet-stream")}
+    elif image is not None:
+        buffer = _image_to_bytes(image)
+        files = {"image": ("image.jpg", buffer, "image/jpeg")}
+    else:
         return "Please upload an image and type a question."
 
-    buffer = _image_to_bytes(image)
-    files = {"image": ("image.jpg", buffer, "image/jpeg")}
     data = {"question": question}
 
     try:
@@ -44,6 +63,32 @@ def ask_vqa(image: Image.Image, question: str) -> str:
         detail = response.json().get("detail", "unknown error")
         return f"Backend error {response.status_code}: {detail}"
     return response.json()["answer"]
+
+
+def _tif_preview(geotiff_file) -> Image.Image | None:
+    """Render a GeoTIFF as a viewable, band-stretched image for the preview box.
+
+    Browsers can't display TIFF and PIL can't open many GeoTIFFs (multi-band,
+    uint16, SAR int16), which is why a raw .tif upload into ``gr.Image`` shows
+    a placeholder. This reuses the backend's percentile-stretched RGB renderer
+    so the user sees the actual scene instead.
+    """
+    if geotiff_file is None:
+        return None
+    try:
+        preview, _w, _h = render_rgb_preview(str(geotiff_file))
+        return preview
+    except Exception as exc:
+        # Diagnosable placeholder instead of a silent blank.
+        img = Image.new("RGB", (640, 480), (32, 32, 32))
+        draw = ImageDraw.Draw(img)
+        try:
+            font = ImageFont.truetype("arial.ttf", size=16)
+        except OSError:
+            font = ImageFont.load_default()
+        draw.text((16, 16), f"Could not render GeoTIFF preview:", fill=(255, 255, 255), font=font)
+        draw.text((16, 40), f"{type(exc).__name__}: {str(exc)[:80]}", fill=(255, 120, 120), font=font)
+        return img
 
 
 def ground_objects(image: Image.Image, geotiff_file, query: str):
@@ -160,10 +205,19 @@ def build_app() -> gr.Blocks:
                         label="Question",
                         placeholder="e.g. How many buildings are visible?",
                     )
+                tif_file_input = gr.File(
+                    label="Or upload a GeoTIFF (.tif)",
+                    file_types=[".tif", ".tiff"],
+                )
+                tif_file_input.change(
+                    _tif_preview, inputs=[tif_file_input], outputs=[image_input],
+                )
                 answer_output = gr.Textbox(label="Answer", lines=4)
                 submit = gr.Button("Ask")
                 submit.click(
-                    ask_vqa, inputs=[image_input, question_input], outputs=answer_output
+                    ask_vqa,
+                    inputs=[image_input, tif_file_input, question_input],
+                    outputs=answer_output,
                 )
 
             with gr.Tab("Segment & Map"):
@@ -181,6 +235,9 @@ def build_app() -> gr.Blocks:
                         label="Or upload a GeoTIFF (.tif)",
                         file_types=[".tif", ".tiff"],
                     )
+                ground_file_input.change(
+                    _tif_preview, inputs=[ground_file_input], outputs=[ground_image_input],
+                )
                 ground_query_input = gr.Textbox(
                     label="Object to find", placeholder="e.g. buildings, water"
                 )
