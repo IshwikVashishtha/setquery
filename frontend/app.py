@@ -35,6 +35,9 @@ from backend.grounding import render_rgb_preview
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 _BOX_COLOR = "#ff2020"
 _NO_IMAGE_HINT = "Attach an image first, then ask your question."
+#: End-to-end budget for one analysis. The backend runs several MCP tools
+#: (each now capped at 30s) plus the VLM call, so allow the whole chain room.
+_REQUEST_TIMEOUT = 300.0
 
 
 # ---------------------------------------------------------------------------
@@ -69,7 +72,7 @@ def _ask_analyze(image: Image.Image, geotiff_file, question: str) -> str:
     data = {"question": question}
 
     try:
-        with httpx.Client(timeout=120) as client:
+        with httpx.Client(timeout=_REQUEST_TIMEOUT) as client:
             response = client.post(
                 f"{BACKEND_URL}/api/analyze", files=files, data=data
             )
@@ -189,7 +192,7 @@ def ground_objects(image: Image.Image, geotiff_file, query: str):
     data = {"query": query}
 
     try:
-        with httpx.Client(timeout=120) as client:
+        with httpx.Client(timeout=_REQUEST_TIMEOUT) as client:
             response = client.post(
                 f"{BACKEND_URL}/api/ground", files=files, data=data
             )

@@ -15,6 +15,7 @@ which tools were used and which were not.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
@@ -34,6 +35,13 @@ SERVERS = ("Analysis", "Index", "Inversion", "Perception", "Statistics")
 
 #: Above this count the collection is considered already built and we skip it.
 _INDEXED_MIN = 100
+
+#: Per-tool call budget. A perception/ML tool that hangs on model load is
+#: killed here instead of stalling the whole request (the frontend waits on
+#: the aggregate response). Errors still surface per-tool as ``error``.
+_TOOL_TIMEOUT = 30.0
+#: Budget to spawn a server + handshake. Protects against a wedged subprocess.
+_SERVER_SPAWN_TIMEOUT = 30.0
 
 
 def server_params(server: str) -> StdioServerParameters:
@@ -179,8 +187,42 @@ async def retrieve_tools(
 # Argument mapping: which tool inputs can be satisfied from the request.
 # ---------------------------------------------------------------------------
 
+#: Vendored Perception ML tools that are CSV-lookup stubs: they read
+#: precomputed results from ``/root/autodl-tmp/.../model_results.csv`` (a Linux
+#: autodl server path). On a local machine the file doesn't exist, so every
+#: call burns seconds failing — never invoke them when the lookup table is
+#: missing. Pure perception *utilities* (count_skeleton_contours, count_..)
+#: stay callable.
+ML_LOOKUP_TOOLS = (
+    "MSCN",
+    "RemoteCLIP",
+    "Strip_R_CNN",
+    "SM3Det",
+    "RemoteSAM",
+    "InstructSAM",
+    "SAM2",
+    "ChangeOS",
+)
+_ML_LOOKUP_CSV = Path("/root/autodl-tmp/Earth-Agent/benchmark/model_results.csv")
+
+
+def _ml_lookup_available() -> bool:
+    """Whether the precomputed-model CSV the Perception stubs read exists."""
+    return _ML_LOOKUP_CSV.exists()
+
+
+def _ml_skip_reason(tool_name: str) -> str | None:
+    """Why a vendored model-lookup tool can't run here, or None if it can."""
+    if tool_name in ML_LOOKUP_TOOLS and not _ml_lookup_available():
+        return (
+            "this tool reads precomputed model results from a Linux-only "
+            "path (model_results.csv) not present on this machine"
+        )
+    return None
+
+
 _HANDLERS: dict[str, dict] = {
-    # Perception tools
+    # Perception tools (model-lookup ones are gated in map_tool_args below)
     "MSCN": {"input_image_path": "path"},
     "RemoteCLIP": {"input_image_path": "path"},
     "InstructSAM": {"input_image_path": "path", "text_prompt": "query"},
@@ -215,9 +257,15 @@ def map_tool_args(tool: dict, file_path: str, query: str) -> dict | None:
     ``query`` is the user's question (used for prompt-style args like
     ``text_prompt``); ``file_path`` is the on-disk uploaded image/raster.
     """
+    ml_reason = _ml_skip_reason(tool["name"])
+    if ml_reason is not None:
+        tool["_skip_reason"] = ml_reason
+        return None
+
     handlers = _HANDLERS.get(tool["name"])
     if handlers is None:
         return None
+
     args: dict = {}
     for arg, kind in handlers.items():
         if kind == "path":
@@ -252,7 +300,8 @@ async def call_tools(
                     "name": tool["name"],
                     "skipped": True,
                     "output": "",
-                    "reason": "no callable argument mapping for the uploaded file",
+                    "reason": tool.get("_skip_reason")
+                    or "no callable argument mapping for the uploaded file",
                 }
             )
             continue
@@ -260,19 +309,39 @@ async def call_tools(
         by_server.setdefault(tool["server"], []).append(tool)
 
     for server, tools in by_server.items():
-        async with stdio_client(server_params(server)) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                for tool in tools:
-                    entry = {"server": server, "name": tool["name"], "skipped": False}
-                    try:
-                        result = await session.call_tool(tool["name"], tool["_args"])
-                        entry["output"] = ""
-                        if result.content:
-                            entry["output"] = result.content[0].text
-                        if result.isError:
-                            entry["error"] = entry["output"]
-                    except Exception as exc:  # per-tool isolation
-                        entry["error"] = str(exc)
-                    outputs.append(entry)
+        try:
+            async with stdio_client(server_params(server)) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await asyncio.wait_for(
+                        session.initialize(), timeout=_SERVER_SPAWN_TIMEOUT
+                    )
+                    for tool in tools:
+                        entry = {"server": server, "name": tool["name"], "skipped": False}
+                        try:
+                            result = await asyncio.wait_for(
+                                session.call_tool(tool["name"], tool["_args"]),
+                                timeout=_TOOL_TIMEOUT,
+                            )
+                            entry["output"] = ""
+                            if result.content:
+                                entry["output"] = result.content[0].text
+                            if result.isError:
+                                entry["error"] = entry["output"]
+                        except asyncio.TimeoutError:
+                            entry["error"] = f"tool exceeded {_TOOL_TIMEOUT:.0f}s budget"
+                        except Exception as exc:  # per-tool isolation
+                            entry["error"] = str(exc)
+                        outputs.append(entry)
+        except (asyncio.TimeoutError, Exception) as exc:
+            # Server failed to spawn/handshake: report each tool as errored so
+            # the request degrades gracefully instead of stalling.
+            for tool in tools:
+                outputs.append(
+                    {
+                        "server": server,
+                        "name": tool["name"],
+                        "skipped": False,
+                        "error": f"server unavailable: {exc}",
+                    }
+                )
     return outputs
