@@ -8,17 +8,20 @@ HTTP. All answering logic lives in ``backend/orchestration.py`` and
 
 import base64
 import io
+import logging
 import tempfile
 from typing import Annotated
+
+logger = logging.getLogger(__name__)
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 
-from . import grounding
+from . import analyzer, grounding
 from .grounding import GroundingError
 from .orchestration import GRAPH
-from .schemas import GroundResponse, VQAResponse
+from .schemas import AnalyzeResponse, GroundResponse, VQAResponse
 from .vqa_service import VQAServiceError
 
 load_dotenv()  # dev: load HF_TOKEN / VQA_MODEL from .env
@@ -39,8 +42,9 @@ async def vqa(image: UploadFile = File(...), question: str = Form(...)) -> VQARe
     """Answer ``question`` about the uploaded ``image``.
 
     Dispatches through the orchestration graph, which routes by request shape.
-    JPEG/PNG go to the VLM as an image; GeoTIFFs get NDVI/NDWI computed via the
-    MCP subprocess and the measured values fed to the model instead.
+    JPEG/PNG go to the VLM as an image; GeoTIFFs are band-stretched to an RGB
+    preview and answered directly. For the tool-augmented path (every upload
+    run through the relevant MCP tools before answering) use ``/api/analyze``.
 
     Raises:
         HTTPException 400: if ``question`` is blank or ``image`` is missing/corrupt.
@@ -71,6 +75,39 @@ async def vqa(image: UploadFile = File(...), question: str = Form(...)) -> VQARe
         raise HTTPException(status_code=501, detail=result["error"])
 
     return VQAResponse(answer=result["answer"])
+
+
+@app.post("/api/analyze", response_model=AnalyzeResponse)
+async def analyze(
+    image: UploadFile = File(...), question: str = Form(...)
+) -> AnalyzeResponse:
+    """Tool-augmented analysis of the uploaded image (any format).
+
+    The upload is run through the top-relevant MCP tools (selected via the
+    ChromaDB tool index from the user's question), then the tool outputs plus
+    a viewable form of the image go to the VLM for the final answer. JPEG/PNG
+    uploads are decoded by PIL; GeoTIFFs are band-stretched to an RGB preview.
+
+    Raises:
+        HTTPException 400: ``question`` blank, empty upload, or undecodable file.
+        HTTPException 502: if the upstream model call fails.
+    """
+    question = question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="question must not be empty.")
+
+    data = await image.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="image file was empty.")
+
+    try:
+        result = await analyzer.analyze(question, data, image.filename or "image")
+    except VQAServiceError as exc:
+        logger.exception("Tool-augmented analysis failed")
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return AnalyzeResponse(**result)
 
 
 @app.post("/api/change", response_model=VQAResponse)

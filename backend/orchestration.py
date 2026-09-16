@@ -23,13 +23,11 @@ from fastapi import HTTPException
 from langgraph.graph import END, START, StateGraph
 from PIL import Image, UnidentifiedImageError
 
-from . import grounding, mcp_client
-from .geo_tools import GeoError
+from . import grounding
 from .grounding import GroundingError
 from .vqa_service import (
     VQAServiceError,
     answer_change_question,
-    answer_index_question,
     answer_question,
 )
 
@@ -95,11 +93,13 @@ def _answer_raster_image(data: bytes, question: str) -> str:
 
 
 async def _answer_geotiff(data: bytes, question: str) -> str:
-    """Phase 3 logic: compute NDVI/NDWI via the MCP subprocess.
+    """Legacy ``/api/vqa`` GeoTIFF path: band-stretch to an RGB preview.
 
-    When the raster lacks the bands needed for index computation (e.g. an
-    RGB-only GeoTIFF with no NIR), the RGB preview is sent directly to the
-    VLM — the same path as JPEG/PNG uploads.
+    The NDVI/NDWI-over-MCP pipeline that once lived here moved to the
+    tool-augmented ``/api/analyze`` path (``backend/analyzer.py``), which sends
+    every upload — any format — through the top-relevant MCP tools and hands
+    measurements plus the image to the VLM. This route now renders the raster
+    as a viewable RGB preview and answers directly, same as JPEG/PNG.
     """
     tmp_path = None
     try:
@@ -108,39 +108,23 @@ async def _answer_geotiff(data: bytes, question: str) -> str:
             tmp_path = tmp.name
 
         try:
-            indices = await mcp_client.compute_indices(tmp_path)
-        except GeoError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            preview, _w, _h = grounding.render_rgb_preview(tmp_path)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="This GeoTIFF's bands could not be rendered as an RGB "
+                       "preview. Add band descriptions (e.g. 'Red', 'NIR') or use "
+                       "the tool-augmented /api/analyze endpoint.",
+            ) from exc
 
-        if not indices:
-            # RGB-only raster: no Red/NIR bands → indices can't be computed.
-            # Fall back to sending the RGB preview directly to the VLM.
-            logger.info("No indices computable for this GeoTIFF; falling back to direct VLM answering.")
-            try:
-                preview, _w, _h = grounding.render_rgb_preview(tmp_path)
-            except Exception as exc:
-                raise HTTPException(
-                    status_code=400,
-                    detail="This GeoTIFF's bands could not be identified for NDVI/NDWI "
-                           "computations and an RGB preview could not be rendered. "
-                           "Add band descriptions (e.g. 'Red', 'NIR') or pass explicit "
-                           "band indices.",
-                ) from exc
-            try:
-                return answer_question(preview, question)
-            except VQAServiceError as exc:
-                logger.error("VQA model call failed: %s", exc)
-                raise HTTPException(status_code=502, detail=str(exc)) from exc
+        try:
+            return answer_question(preview, question)
+        except VQAServiceError as exc:
+            logger.error("VQA model call failed: %s", exc)
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
     finally:
         if tmp_path:
             os.unlink(tmp_path)
-
-    logger.info("Computed indices %s for GeoTIFF upload", indices)
-    try:
-        return answer_index_question(question, indices)
-    except VQAServiceError as exc:
-        logger.error("VQA model call failed: %s", exc)
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 async def single_image_node(state: OrchestrationState) -> dict:

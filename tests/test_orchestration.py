@@ -6,7 +6,7 @@ from io import BytesIO
 import pytest
 from PIL import Image, ImageDraw
 
-from backend import mcp_client, vqa_service
+from backend import grounding, vqa_service
 from backend.orchestration import GRAPH, _NOT_IMPLEMENTED, decide_route
 
 
@@ -107,26 +107,27 @@ def test_graph_sar_reports_not_implemented():
     assert result.get("error") == _NOT_IMPLEMENTED["optical_sar"]
 
 
-def test_graph_geotiff_node_gets_measured_values(monkeypatch):
-    """The geotiff node passes indices from the (mocked) MCP client to the model."""
+def test_graph_geotiff_node_answers_from_preview(monkeypatch):
+    """The legacy geotiff node renders an RGB preview and answers directly."""
     captured = {}
 
     def capture_completion(messages):
         captured["messages"] = messages
         return _FakeCompletion()
 
-    async def fake_compute_indices(path, bbox=None):
-        return {"NDVI": 0.7}
-
     monkeypatch.setattr(vqa_service, "_completion", capture_completion)
-    monkeypatch.setattr(mcp_client, "compute_indices", fake_compute_indices)
+    monkeypatch.setattr(
+        grounding, "render_rgb_preview",
+        lambda path: (Image.new("RGB", (8, 8), "green"), 8, 8),
+    )
 
     result = asyncio.run(
         GRAPH.ainvoke(
-            {"image_bytes": b"not-used", "question": "Healthy?",
+            {"image_bytes": b"not-a-real-tif", "question": "Healthy?",
              "file_kind": "geotiff", "n_images": 1}
         )
     )
     assert result.get("answer") == _FakeMessage.content
-    prompt_text = captured["messages"][0]["content"][0]["text"]
-    assert "0.700" in prompt_text  # measured NDVI formatted to 3 decimals
+    content = captured["messages"][0]["content"]
+    assert any(c["type"] == "image_url" for c in content)  # preview reached the model
+    assert any(c["type"] == "text" and "Healthy?" in c["text"] for c in content)

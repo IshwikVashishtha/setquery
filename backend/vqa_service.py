@@ -114,6 +114,64 @@ def answer_index_question(question: str, indices: dict[str, float]) -> str:
     return _extract_answer(_completion(messages))
 
 
+def answer_with_tools(
+    image: Image.Image, question: str, tool_outputs: list[dict]
+) -> str:
+    """Answer ``question`` from the image *together with* tool measurements.
+
+    The tool-augmented analysis path (backend/analyzer.py) runs the upload
+    through the top-relevant MCP tools, then hands the resulting measurements
+    to the model alongside the image so it reasons from real numbers, not
+    guesses — the image-and-tools input the user asked for.
+
+    Args:
+        image: The uploaded image (GeoTIFFs arrive as a band-stretched preview).
+        question: A plain-English question about the image/raster.
+        tool_outputs: Tool results consumed by ``analyzer.call_tools``, each
+            ``{"server", "name", "output"|"error", "skipped": bool}``.
+
+    Returns:
+        The model's raw text answer.
+
+    Raises:
+        VQAServiceError: If the upstream model call fails or returns no text.
+    """
+    used = [
+        o
+        for o in tool_outputs
+        if not o.get("skipped") and (o.get("output") or o.get("error"))
+    ]
+    if used:
+        lines = "\n".join(
+            f"- {o['name']} ({o['server']}): {o.get('output') or o.get('error')}"
+            for o in used
+        )
+        measurements = f"The following analysis tools ran on the uploaded image:\n{lines}"
+    else:
+        skipped = [o["name"] for o in tool_outputs if o.get("skipped")]
+        measurements = (
+            "No tool produced a measurement for this upload."
+            + (f" Retrieved tools ({', '.join(skipped[:5])}) were skipped because "
+               "their inputs could not be supplied from the uploaded file." if skipped else "")
+        )
+    prompt = (
+        "A user asked a question about an uploaded remote-sensing image/raster.\n"
+        f"{measurements}\n"
+        "Incorporate these measured values where relevant, then answer the "
+        f"user's question.\n\nQuestion: {question}"
+    )
+    messages: list[dict[str, Any]] = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": _image_to_data_uri(image)}},
+            ],
+        }
+    ]
+    return _extract_answer(_completion(messages))
+
+
 _GROUNDING_PROMPT = """\
 You are an object-detection assistant. Return ONLY a JSON array of the objects
 matching the user's request that are visible in the image. Each element is an

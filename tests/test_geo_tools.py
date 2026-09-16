@@ -1,16 +1,15 @@
 """Tests for Phase 2 GeoTIFF index computation and the GeoTIFF API path."""
 
-import os
-
 import numpy as np
 import pytest
 import rasterio as rio
 from fastapi.testclient import TestClient
+from PIL import Image as PILImage
 from rasterio.transform import from_origin
 
-from backend import mcp_client, vqa_service
+from backend import grounding, vqa_service
 from backend.app import app
-from backend.geo_tools import BandResolutionError, GeoError, compute_ndvi, compute_ndwi
+from backend.geo_tools import BandResolutionError, compute_ndvi, compute_ndwi
 
 
 def _write_geotiff(path: str, *, descriptions: list[str] | None = None) -> str:
@@ -94,19 +93,18 @@ def client():
 
 
 def test_vqa_geotiff_returns_answer(client, monkeypatch, tmp_path):
-    """A GeoTIFF upload returns a non-empty answer whose model prompt contained
-    the measured index values (the Phase 2 cross-check)."""
+    """A GeoTIFF upload renders an RGB preview and answers directly."""
     captured = {}
 
     def capture_completion(messages):
         captured["messages"] = messages
         return _FakeCompletion()
 
-    async def fake_compute_indices(path, bbox=None):
-        return {"NDVI": 0.3888888888888889, "NDWI": -0.2335}
-
     monkeypatch.setattr(vqa_service, "_completion", capture_completion)
-    monkeypatch.setattr(mcp_client, "compute_indices", fake_compute_indices)
+    monkeypatch.setattr(
+        grounding, "render_rgb_preview",
+        lambda path: (PILImage.new("RGB", (8, 8), "green"), 8, 8),
+    )
 
     path = _write_geotiff(str(tmp_path / "upload.tif"),
                           descriptions=["Red", "Green", "Blue", "NIR"])
@@ -119,45 +117,20 @@ def test_vqa_geotiff_returns_answer(client, monkeypatch, tmp_path):
     assert response.status_code == 200
     assert len(response.json()["answer"]) > 0
 
-    prompt_text = captured["messages"][0]["content"][0]["text"]
-    assert "NDVI" in prompt_text
-    assert "0.389" in prompt_text  # the measured mean, formatted to 3 decimals
+    content = captured["messages"][0]["content"]
+    assert any(c["type"] == "image_url" for c in content)  # preview reached the model
+    assert any(
+        c["type"] == "text" and "vegetation" in c["text"] for c in content
+    )
 
 
-def test_vqa_geotiff_undecodable_bands_falls_back_to_vlm(client, monkeypatch, tmp_path):
-    """A GeoTIFF with unresolvable bands falls back to direct VLM answering."""
-    class _FakeMessage:
-        content = "The image shows a coastal area with mixed land cover."
+def test_vqa_geotiff_unrenderable_returns_400(client, monkeypatch, tmp_path):
+    """A GeoTIFF whose bands can't be stretched to an RGB preview -> 400."""
+    def broken_preview(path):
+        raise ValueError("no RGB bands")
 
-    class _FakeChoice:
-        message = _FakeMessage()
-
-    class _FakeCompletion:
-        choices = [_FakeChoice()]
-
-    async def no_indices(path, bbox=None):
-        return {}
-
-    monkeypatch.setattr(mcp_client, "compute_indices", no_indices)
     monkeypatch.setattr(vqa_service, "_completion", lambda messages: _FakeCompletion())
-
-    path = _write_bare_geotiff(str(tmp_path / "upload.tif"))
-    with open(path, "rb") as fh:
-        response = client.post(
-            "/api/vqa",
-            files={"image": ("upload.tif", fh, "application/octet-stream")},
-            data={"question": "Is the vegetation healthy?"},
-        )
-    assert response.status_code == 200
-    assert len(response.json()["answer"]) > 0
-
-
-def test_vqa_geotiff_geo_error_returns_400(client, monkeypatch, tmp_path):
-    """A GeoError from the MCP client (e.g. corrupt raster) -> 400."""
-    async def broken(path, bbox=None):
-        raise GeoError("MCP tool compute_ndvi failed: not recognized as a GeoTIFF")
-
-    monkeypatch.setattr(mcp_client, "compute_indices", broken)
+    monkeypatch.setattr(grounding, "render_rgb_preview", broken_preview)
 
     path = _write_bare_geotiff(str(tmp_path / "upload.tif"))
     with open(path, "rb") as fh:
@@ -167,7 +140,7 @@ def test_vqa_geotiff_geo_error_returns_400(client, monkeypatch, tmp_path):
             data={"question": "Is the vegetation healthy?"},
         )
     assert response.status_code == 400
-    assert "failed" in response.json()["detail"]
+    assert "preview" in response.json()["detail"]
 
 
 class _FakeMessage:

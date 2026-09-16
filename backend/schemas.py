@@ -9,6 +9,29 @@ class VQAResponse(BaseModel):
     answer: str
 
 
+class ToolUseResponse(BaseModel):
+    """One MCP tool's result in the tool-augmented analysis path."""
+
+    server: str
+    name: str
+    output: str | None = None
+    error: str | None = None
+    skipped: bool = False
+    reason: str | None = None
+
+
+class AnalyzeResponse(BaseModel):
+    """Body returned by ``POST /api/analyze``.
+
+    ``answer`` is the VLM's text answer built from the image + tool outputs;
+    ``tools_used`` lists every tool that was attempted (with its output or
+    error, or ``skipped`` when its inputs couldn't be supplied).
+    """
+
+    answer: str
+    tools_used: list[ToolUseResponse]
+
+
 class GroundBoxResponse(BaseModel):
     """One grounding detection: pixel box (+ optional real-world coordinates)."""
 

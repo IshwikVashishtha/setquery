@@ -6,11 +6,16 @@ Hugging Face Inference Providers.
 
 Phases 1–6 are implemented:
 
+- **Tool-augmented analysis** (`POST /api/analyze`) — every upload, **any
+  format**, is run through the MCP tools most relevant to the question: a
+  ChromaDB index of ~104 tool descriptions (name + description, embedded once
+  locally with all-MiniLM-L6-v2 and reused across restarts) retrieves the top-8,
+  the callable subset is invoked over MCP, and the tool measurements plus a
+  viewable form of the image go to the VLM for the final answer. GeoTIFFs are
+  band-stretched to an RGB preview before being sent to the model.
 - **JPEG/PNG** — the image is sent to the VLM and answered directly.
-- **GeoTIFF** (`.tif`/`.tiff`) — NDVI and NDWI are computed from the actual
-  bands via the **Earth-Agent MCP server** (a `python -m earth_agent.mcp_server`
-  subprocess), and the **measured values** are fed to the model so its answer can
-  be checked against real numbers instead of guesses.
+- **GeoTIFF** (`.tif`/`.tiff`) — rendered as a viewable RGB preview and answered
+  by the VLM (the preferred `POST /api/analyze` path also runs it through tools).
 - **Bi-temporal change** (`POST /api/change`) — two co-registered images plus
   optional capture dates are sent to the VLM together and the change between
   them is described.
@@ -23,7 +28,9 @@ Requests are dispatched through a small LangGraph state machine
 (`backend/orchestration.py`) that routes on request shape — single-image,
 bi-temporal, and optical-SAR branches exist, with the latter two returning
 explicit "not implemented" responses until Phases 5+ land. Map overlays remain
-deferred — see `plan.md` and `Design.md` for the roadmap.
+deferred — see `plan.md` and `Design.md` for the roadmap. The 109 upstream MCP
+tools live in `mcp_servers/agent_tools/` (Analysis, Index, Inversion,
+Perception, Statistics); `backend/tool_router.py` selects and calls them.
 
 ## How to run
 
@@ -53,11 +60,19 @@ and read the answer.
 ### Bare-bones check (no UI)
 
 ```bash
-# JPG/PNG — answered straight from the image
+# Tool-augmented analysis — every format runs through the relevant MCP tools
+# first; measurements + image are handed to the model for the answer.
+curl -F image=@sample.jpg -F question="What is in this image?" \
+  http://localhost:8000/api/analyze
+
+curl -F image=@sample_multispectral.tif -F question="Is the vegetation healthy?" \
+  http://localhost:8000/api/analyze
+
+# JPG/PNG — straight from the image (no tools)
 curl -F image=@sample.jpg -F question="What is in this image?" \
   http://localhost:8000/api/vqa
 
-# GeoTIFF — NDVI/NDWI computed locally, measured values given to the model
+# GeoTIFF — band-stretched RGB preview answered directly by the VLM
 curl -F image=@sample_multispectral.tif -F question="Is the vegetation healthy?" \
   http://localhost:8000/api/vqa
 
@@ -93,21 +108,23 @@ passes in CI.
 
 ```
 backend/
-  app.py          # FastAPI app: POST /api/vqa, /api/change, /api/ground (thin web layer)
-  schemas.py      # Pydantic v2 request/response models (VQAResponse, GroundResponse)
+  app.py          # FastAPI app: POST /api/analyze, /api/vqa, /api/change, /api/ground
+  schemas.py      # Pydantic v2 request/response models (AnalyzeResponse, VQAResponse, GroundResponse)
+  analyzer.py     # tool-augmented analysis: upload -> MCP tools -> VLM answer
+  tool_router.py  # ChromaDB tool index: retrieve top-k relevant tools, call them over MCP
   orchestration.py# LangGraph state machine: router -> single/bi-temporal/SAR nodes (Phase 4)
-  vqa_service.py  # answer_question / answer_change_question / ground_objects — the ONLY model-facing code
+  vqa_service.py  # answer_question / answer_with_tools / ground_objects — the ONLY model-facing code
   geo_tools.py    # compute_ndvi / compute_ndwi band math (Phase 2)
-  mcp_client.py   # spawns the MCP server subprocess, calls index tools (Phase 3)
   grounding.py    # Phase 6: tolerant box parser, geo-mapping, Folium overlay builder
-earth_agent/
-  mcp_server.py   # Earth-Agent MCP server exposing geo tools over stdio (Phase 3)
+mcp_servers/
+  agent_tools/    # 109 vendored Earth-Agent MCP tools (Analysis, Index, Inversion, Perception, Statistics)
+  .tool_index/    # persistent ChromaDB index of tool descriptions (built once, reused)
 frontend/
   app.py          # Gradio UI
 tests/
   test_vqa_smoke.py
   test_geo_tools.py
-  test_mcp.py
+  test_orchestration.py
   test_grounding.py
 .env.example      # HF_TOKEN=, VQA_MODEL=
 requirements.txt
