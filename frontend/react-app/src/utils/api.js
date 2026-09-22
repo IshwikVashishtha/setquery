@@ -1,11 +1,11 @@
 import axios from 'axios'
 import { renderTiffPreview } from './renderTiff.js'
 
-const API_BASE = import.meta.env.BACKEND_URL || ''
+const API_BASE = import.meta.env.VITE_BACKEND_URL || ''
 
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 300000, // 5 minutes for model inference
+  timeout: 300000, 
 })
 
 /**
