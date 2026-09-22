@@ -26,7 +26,7 @@ from .schemas import AnalyzeResponse, GroundResponse, VQAResponse
 from .vqa_service import VQAServiceError
 from fastapi.middleware.cors import CORSMiddleware
 
-load_dotenv()  # dev: load HF_TOKEN / VQA_MODEL from .env
+load_dotenv() 
 
 
 app = FastAPI(title="Remote Sensing VQA Agent", version="0.1.0")
@@ -34,9 +34,9 @@ FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "*")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_ORIGIN] if FRONTEND_ORIGIN != "*" else ["*"],
+    allow_origins=[FRONTEND_ORIGIN],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 

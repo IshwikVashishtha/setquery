@@ -28,11 +28,11 @@ const NODE_POSITIONS = [
 ]
 
 function statusColor(status, isActive) {
-  if (status === 'completed') return '#008cffff'
-  if (status === 'running' || isActive) return '#0004ffff'
+  if (status === 'completed') return '#00e0ff'
+  if (status === 'running' || isActive) return '#c084fc'
   if (status === 'error') return '#ff3355'
-  if (status === 'skipped') return '#777799'
-  return '#3a3a5c'
+  if (status === 'skipped') return '#ffd166'
+  return '#ffd166'
 }
 
 // A single glowing node
@@ -59,7 +59,7 @@ function GlowingNode({ position, status, label, description, isActive }) {
       <Sphere args={[0.7, 32, 32]}>
         <meshStandardMaterial
           color={color}
-          emissive={emissive ? color : '#0dee27ff'}
+          emissive={emissive ? color : '#00c8ff'}
           emissiveIntensity={isActive || status === 'running' ? 0.9 : status === 'completed' ? 0.5 : 0.1}
           roughness={0.35}
           metalness={0.7}
@@ -212,7 +212,7 @@ const FlowGraph = ({ steps, currentStep }) => {
             speed={1.5}
           />
           <Sparkles
-            count={60}
+            count={7000}
             scale={[30, 15, 25]}
             size={2.5}
             speed={0.4}
