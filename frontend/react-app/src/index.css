@@ -1,0 +1,83 @@
+/* CSS Reset and base styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0f0f23;
+  color: #e0e0e0;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+  width: 100%;
+}
+
+/* App Container */
+.app-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
+  color: #e0e0e0;
+}
+
+/* Three Column Layout */
+.three-column-layout {
+  flex: 1;
+  display: flex;
+  height: calc(100vh - 60px);
+  padding: 16px;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.left-column {
+  flex: 0 0 24%;
+  min-width: 230px;
+  max-width: 290px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.center-column {
+  flex: 1 1 34%;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.right-column {
+  flex: 0 0 42%;
+  min-width: 380px;
+  max-width: 540px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2d4a79;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3d5a8a;
+}

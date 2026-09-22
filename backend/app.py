@@ -9,13 +9,14 @@ HTTP. All answering logic lives in ``backend/orchestration.py`` and
 import base64
 import io
 import logging
+import os
 import tempfile
 from typing import Annotated
 
 logger = logging.getLogger(__name__)
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from PIL import Image, UnidentifiedImageError
 
 from . import analyzer, grounding
@@ -35,6 +36,43 @@ GEOTIFF_EXTENSIONS = {"tif", "tiff"}
 async def health() -> dict:
     """Liveness probe."""
     return {"status": "ok"}
+
+
+@app.post("/api/preview")
+async def preview(image: UploadFile = File(...)) -> Response:
+    """Render a viewable RGB PNG preview for any image, especially multi-band GeoTIFFs."""
+    data = await image.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="image file was empty.")
+
+    ext = (image.filename or "").rsplit(".", 1)[-1].lower()
+    if ext in GEOTIFF_EXTENSIONS:
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
+                tmp.write(data)
+                tmp_path = tmp.name
+            preview_img, _, _ = grounding.render_rgb_preview(tmp_path)
+            buf = io.BytesIO()
+            preview_img.save(buf, format="PNG")
+            return Response(content=buf.getvalue(), media_type="image/png")
+        except Exception as exc:
+            logger.exception("GeoTIFF preview generation failed")
+            raise HTTPException(status_code=400, detail=f"GeoTIFF preview failed: {exc}") from exc
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+
+    try:
+        pil_img = Image.open(io.BytesIO(data)).convert("RGB")
+        buf = io.BytesIO()
+        pil_img.save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
+    except Exception:
+        return Response(content=data, media_type=image.content_type or "image/jpeg")
 
 
 @app.post("/api/vqa", response_model=VQAResponse)

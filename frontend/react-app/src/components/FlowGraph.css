@@ -1,0 +1,148 @@
+.flow-graph-container {
+  background: #131326;
+  border: 1px solid #22223a;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.graph-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid #1e1e32;
+  flex-shrink: 0;
+}
+
+.graph-header h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #c0c0d8;
+  letter-spacing: 0.3px;
+}
+
+.graph-stats {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: #777799;
+}
+
+.current-step-badge {
+  background: #0d223a;
+  color: #00aaff;
+  border: 1px solid #005588;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.graph-canvas {
+  flex: 1;
+  position: relative;
+  width: 100%;
+  min-height: 0;
+}
+
+.graph-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #00aaff;
+  font-size: 0.85rem;
+}
+
+.graph-legend {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  padding: 10px 16px;
+  border-top: 1px solid #1e1e32;
+  background: #0d0d1c;
+  flex-shrink: 0;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: #777799;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.legend-dot.completed {
+  background: #00ff88;
+  box-shadow: 0 0 6px #00ff88;
+}
+
+.legend-dot.active {
+  background: #00aaff;
+  box-shadow: 0 0 6px #00aaff;
+}
+
+.legend-dot.pending {
+  background: #3a3a5c;
+}
+
+/* 3D HTML overlay styles */
+.node-label {
+  background: rgba(15, 15, 35, 0.88);
+  border: 1px solid #2a2a4a;
+  padding: 4px 8px;
+  border-radius: 6px;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+  transition: all 0.3s;
+}
+
+.node-label.active {
+  border-color: #00aaff;
+  box-shadow: 0 0 10px rgba(0, 170, 255, 0.4);
+}
+
+.node-label.completed {
+  border-color: #00ff88;
+}
+
+.node-label-text {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #e0e0f0;
+}
+
+.node-label-desc {
+  font-size: 0.58rem;
+  color: #666688;
+  margin-top: 1px;
+}
+
+.spinning {
+  animation: spin 1.2s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

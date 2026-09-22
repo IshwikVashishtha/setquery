@@ -1,0 +1,59 @@
+.header {
+  height: 60px;
+  background: linear-gradient(90deg, #0f0f23 0%, #1a1a3e 50%, #0f0f23 100%);
+  border-bottom: 1px solid #2a2a4a;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  flex-shrink: 0;
+}
+
+.header-content {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-title h1 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  background: linear-gradient(90deg, #00aaff, #00ff88);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 0.5px;
+}
+
+.header-title p {
+  font-size: 0.72rem;
+  color: #666688;
+  margin-top: 1px;
+}
+
+.header-modules {
+  display: flex;
+  gap: 28px;
+}
+
+.module {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.module-icon {
+  color: #00aaff;
+  flex-shrink: 0;
+}
+
+.module h3 {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #c0c0d8;
+}
+
+.module p {
+  font-size: 0.66rem;
+  color: #555577;
+}
