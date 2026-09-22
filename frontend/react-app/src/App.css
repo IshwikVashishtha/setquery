@@ -15,6 +15,32 @@
   overflow: hidden;
 }
 
+@media (max-width: 1024px) {
+  .three-column-layout {
+    flex-direction: column;
+    overflow-y: auto;
+    height: auto;
+  }
+  .left-column, .center-column, .right-column {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: unset !important;
+    flex: none;
+    height: 60vh;
+  }
+}
+
+@media (max-width: 768px) {
+  .three-column-layout {
+    padding: 8px;
+    gap: 8px;
+  }
+  .left-column, .center-column, .right-column {
+    height: 50vh;
+  }
+  .message-bubble { font-size: 0.78rem; }
+}
+
 .left-column {
   flex: 0 0 24%;
   min-width: 230px;
