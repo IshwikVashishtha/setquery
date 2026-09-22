@@ -28,7 +28,7 @@ const NODE_POSITIONS = [
 ]
 
 function statusColor(status, isActive) {
-  if (status === 'completed') return '##008cffff'
+  if (status === 'completed') return '#008cffff'
   if (status === 'running' || isActive) return '#0004ffff'
   if (status === 'error') return '#ff3355'
   if (status === 'skipped') return '#777799'
