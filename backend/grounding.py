@@ -18,11 +18,9 @@ Pipeline::
 """
 
 from __future__ import annotations
+from logger import get_logger
 
-import base64
-import io
-import json
-import re
+import base64 , io , json , re 
 from dataclasses import dataclass
 
 import numpy as np
@@ -31,6 +29,7 @@ import rasterio.warp
 from PIL import Image, UnidentifiedImageError
 
 from .vqa_service import ground_objects
+logger = get_logger(__name__)
 
 #: Normalized coordinate space the model is asked to emit (0..NORMALIZED).
 NORMALIZED = 1000

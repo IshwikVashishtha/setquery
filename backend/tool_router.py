@@ -15,15 +15,13 @@ which tools were used and which were not.
 
 from __future__ import annotations
 
-import asyncio
-import json
-import os
-import sys
+import asyncio , json , os , sys 
 from pathlib import Path
-
 import chromadb
 from chromadb.utils import embedding_functions
 from mcp import ClientSession, StdioServerParameters, stdio_client
+from logger import get_logger
+logger = get_logger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TOOLS_DIR = REPO_ROOT / "mcp_servers" / "agent_tools"
@@ -46,6 +44,8 @@ _SERVER_SPAWN_TIMEOUT = 30.0
 
 def server_params(server: str) -> StdioServerParameters:
     """Mirror ``.mcp.json``: spawn an upstream server with this venv's python."""
+    
+    logger.info(f"Spawning server {server}")
     return StdioServerParameters(
         command=sys.executable,
         args=[str(TOOLS_DIR / f"{server}.py"), "--temp_dir", str(DEFAULT_INDEX_DIR / "tmp")],
@@ -57,10 +57,17 @@ def server_params(server: str) -> StdioServerParameters:
 def _collection(index_dir: Path, create: bool = False):
     """Open the persistent collection with a shared default embedding function."""
     client = chromadb.PersistentClient(path=str(index_dir))
-    fn = embedding_functions.DefaultEmbeddingFunction()
-    return client.get_or_create_collection(
+    
+    fn = embedding_functions.HuggingFaceEmbeddingFunction(
+        model_name="sentence-transformers/all-MiniLM-L6-v2",
+        api_key=os.getenv("HF_TOKEN"),
+    )
+    logger.info(f"Using HuggingFace embedding function: {fn}")
+    res = client.get_or_create_collection(
         COLLECTION, embedding_function=fn
     ) if create else client.get_collection(COLLECTION)
+    logger.info(f"Collection {COLLECTION} size: {res.count()}")
+    return res
 
 
 async def _list_server_tools(server: str):
@@ -68,6 +75,7 @@ async def _list_server_tools(server: str):
     async with stdio_client(server_params(server)) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
+            logger.info(f"Server {server} initialized")
             return (await session.list_tools()).tools
 
 
@@ -79,11 +87,14 @@ async def build_index(index_dir: Path | None = None, force: bool = False) -> boo
         and was left untouched (the "skip if already embedded" behaviour).
     """
     index_dir = index_dir or DEFAULT_INDEX_DIR
+    logger.info(f"Building index at {index_dir}")
     col = _collection(index_dir, create=True)
     if not force and col.count() >= _INDEXED_MIN:
+        logger.info(f"Index already built, skipping re-building")
         return False
 
     total = col.count() + 0  # keep additions idempotent per id
+    logger.info(f"Index size before embedding: {total}")
     for server in SERVERS:
         tools = await _list_server_tools(server)
         ids, docs, metas = [], [], []
@@ -164,6 +175,7 @@ async def retrieve_tools(
     """
     index_dir = index_dir or DEFAULT_INDEX_DIR
     tools = await _query(query, k, index_dir)
+    logger.info(f"Retrieved {len(tools)} tools for query: {query}")
 
     callable_tools = [t for t in tools if _is_callable(t)]
     non_callable = [t for t in tools if not _is_callable(t)]
@@ -207,11 +219,13 @@ _ML_LOOKUP_CSV = Path("/root/autodl-tmp/Earth-Agent/benchmark/model_results.csv"
 
 
 def _ml_lookup_available() -> bool:
+    logger.info(f"Checking if model lookup CSV exists: {_ML_LOOKUP_CSV}")
     """Whether the precomputed-model CSV the Perception stubs read exists."""
     return _ML_LOOKUP_CSV.exists()
 
 
 def _ml_skip_reason(tool_name: str) -> str | None:
+    logger.info(f"Checking if model lookup CSV exists: {_ML_LOOKUP_CSV}")
     """Why a vendored model-lookup tool can't run here, or None if it can."""
     if tool_name in ML_LOOKUP_TOOLS and not _ml_lookup_available():
         return (
@@ -222,6 +236,7 @@ def _ml_skip_reason(tool_name: str) -> str | None:
 
 
 _HANDLERS: dict[str, dict] = {
+    
     # Perception tools (model-lookup ones are gated in map_tool_args below)
     "MSCN": {"input_image_path": "path"},
     "RemoteCLIP": {"input_image_path": "path"},
@@ -252,6 +267,7 @@ _HANDLERS: dict[str, dict] = {
 
 
 def map_tool_args(tool: dict, file_path: str, query: str) -> dict | None:
+    logger.info(f"Mapping arguments for tool: {tool['name']}")
     """Build callable arguments for ``tool``, or ``None`` if we can't supply them.
 
     ``query`` is the user's question (used for prompt-style args like
@@ -270,20 +286,28 @@ def map_tool_args(tool: dict, file_path: str, query: str) -> dict | None:
     for arg, kind in handlers.items():
         if kind == "path":
             args[arg] = file_path
+            logger.info(f"Setting argument {arg} to file path: {file_path}")
         elif kind == "paths":
             args[arg] = [file_path]
         elif kind == "query":
+            logger.info(f"Setting argument {arg} to query: {query}")
             args[arg] = query
         elif kind == "default_128":
+            logger.info(f"Setting default argument {arg} to 128.0")
             args[arg] = 128.0
         elif kind == "default_0_above":
             args[arg] = 0.0
+            logger.info(f"Setting default argument {arg} to 0.0")
+        else:
+            raise ValueError(f"Unknown argument kind: {kind}")
     return args
 
 
 async def call_tools(
     selected: list[dict], file_path: str, query: str
 ) -> list[dict]:
+    logger.info(f"Calling {len(selected)} tools for query: {query}")
+    
     """Invoke the arg-mappable tools over MCP, grouped by server.
 
     Returns one entry per attempted tool:

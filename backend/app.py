@@ -13,7 +13,8 @@ import os
 import tempfile
 from typing import Annotated
 
-logger = logging.getLogger(__name__)
+from logger import get_logger
+logger = get_logger(__name__)
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
@@ -51,7 +52,9 @@ async def health() -> dict:
 
 @app.post("/api/preview")
 async def preview(image: UploadFile = File(...)) -> Response:
+    logger.info(f"Received preview request for {image.filename}")
     """Render a viewable RGB PNG preview for any image, especially multi-band GeoTIFFs."""
+    
     data = await image.read()
     if not data:
         raise HTTPException(status_code=400, detail="image file was empty.")
@@ -88,8 +91,9 @@ async def preview(image: UploadFile = File(...)) -> Response:
 
 @app.post("/api/vqa", response_model=VQAResponse)
 async def vqa(image: UploadFile = File(...), question: str = Form(...)) -> VQAResponse:
+    logger.info(f"Received VQA request for question: {question}")
     """Answer ``question`` about the uploaded ``image``.
-
+    
     Dispatches through the orchestration graph, which routes by request shape.
     JPEG/PNG go to the VLM as an image; GeoTIFFs are band-stretched to an RGB
     preview and answered directly. For the tool-augmented path (every upload
@@ -130,6 +134,7 @@ async def vqa(image: UploadFile = File(...), question: str = Form(...)) -> VQARe
 async def analyze(
     image: UploadFile = File(...), question: str = Form(...)
 ) -> AnalyzeResponse:
+    logger.info(f"Received analyze request for question: {question}")
     """Tool-augmented analysis of the uploaded image (any format).
 
     The upload is run through the top-relevant MCP tools (selected via the
@@ -167,6 +172,7 @@ async def change(
     date1: str | None = Form(None),
     date2: str | None = Form(None),
 ) -> VQAResponse:
+    logger.info(f"Received change request for question: {question}")
     """Describe the change between two co-registered images (Phase 5).
 
     Dispatches through the graph's bi_temporal branch: both images plus optional
@@ -207,6 +213,7 @@ async def ground(
     image: UploadFile = File(...),
     query: str = Form(...),
 ) -> GroundResponse:
+    logger.info(f"Received ground request for query: {query}")
     """Ground every instance of ``query`` in ``image`` and return boxes + overlay.
 
     Phase 6 (Backlog.md): the hosted VLM localizes the requested object and

@@ -22,7 +22,8 @@ from . import tool_router, vqa_service
 from .grounding import render_rgb_preview
 from .vqa_service import VQAServiceError
 
-logger = logging.getLogger(__name__)
+from logger import get_logger
+logger = get_logger(__name__)
 
 GEOTIFF_EXTENSIONS = {"tif", "tiff"}
 

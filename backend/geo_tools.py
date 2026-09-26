@@ -21,6 +21,8 @@ from typing import Literal
 
 import numpy as np
 import rasterio as rio
+from logger import get_logger
+logger = get_logger(__name__)
 
 BandKind = Literal["red", "green", "nir", "swir"]
 

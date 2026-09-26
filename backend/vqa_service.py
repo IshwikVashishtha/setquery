@@ -84,6 +84,7 @@ def answer_question(image: Image.Image, question: str) -> str:
 
 
 def answer_index_question(question: str, indices: dict[str, float]) -> str:
+    
     """Answer a question about a GeoTIFF from computed multispectral indices.
 
     The GeoTIFF itself isn't sent to the model (it's not a viewable image) —

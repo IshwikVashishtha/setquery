@@ -13,9 +13,7 @@ Phases 5 (bi-temporal) and beyond.
 
 from __future__ import annotations
 
-import logging
-import os
-import tempfile
+import os, tempfile 
 from io import BytesIO
 from typing import Literal, TypedDict
 
@@ -30,8 +28,9 @@ from .vqa_service import (
     answer_change_question,
     answer_question,
 )
+from logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 FileKind = Literal["raster", "geotiff"]
 Route = Literal["single_image", "bi_temporal", "optical_sar"]
