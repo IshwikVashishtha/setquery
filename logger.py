@@ -1,8 +1,7 @@
-import logging , sys , colorama
+import logging , sys
 import sys
 from datetime import datetime
 
-colorama.just_fix_windows_console()
 
 class ColorFormatter(logging.Formatter):
     # ANSI color codes
